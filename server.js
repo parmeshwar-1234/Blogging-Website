@@ -88,6 +88,11 @@ app.use('/admin', requireLogin, express.static(path.join(__dirname, 'admin')));
 
 // --- API Routes ---
 
+// Test route to confirm server is running
+app.get('/', (req, res) => {
+    res.send('Blog Backend is Running!');
+});
+
 // Login Route
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
