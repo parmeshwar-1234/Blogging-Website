@@ -127,7 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input type="text" class="form-control" id="title" value="${post.title || ''}" required>
                         </div>
                         <div class="mb-3">
-                            <label for="featuredImage" class="form-label">Featured Image</label>
+                            <label for="imageUrl" class="form-label">Featured Image URL (Optional)</label>
+                            <input type="url" class="form-control" id="imageUrl" value="${post.imageUrl || ''}" placeholder="e.g., https://example.com/image.jpg">
+                        </div>
+                        <div class="mb-3">
+                            <label for="featuredImage" class="form-label">Upload Featured Image (Optional)</label>
                             <input type="file" class="form-control" id="featuredImage" accept="image/*">
                             ${post.imageUrl ? `<img src="${post.imageUrl}" class="img-thumbnail mt-2" style="max-width: 200px;">` : ''}
                         </div>
@@ -174,15 +178,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const postId = form.dataset.postId;
             const title = document.getElementById('title').value;
             const content = tinymce.get('content').getContent();
-            const featuredImage = document.getElementById('featuredImage').files[0];
+            const imageUrl = document.getElementById('imageUrl').value; // Get URL from new input
+            const featuredImageFile = document.getElementById('featuredImage').files[0];
             const status = e.submitter.dataset.status; // Get status from the clicked button
 
             const formData = new FormData();
             formData.append('title', title);
             formData.append('content', content);
             formData.append('status', status);
-            if (featuredImage) {
-                formData.append('featuredImage', featuredImage);
+            
+            if (imageUrl) {
+                formData.append('imageUrl', imageUrl); // Prioritize URL if provided
+            } else if (featuredImageFile) {
+                formData.append('featuredImage', featuredImageFile);
             }
 
             // --- DEBUGGING FormData START ---

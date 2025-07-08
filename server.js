@@ -34,14 +34,9 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 // --- Multer Configuration for File Uploads ---
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'public/uploads/');
-    },
-    filename: function (req, file, cb) {
-        cb(null, Date.now() + '-' + file.originalname);
-    }
-});
+// Use memoryStorage when you want to process the file in memory (e.g., send to cloud storage)
+// or if you're not saving it locally.
+const storage = multer.memoryStorage(); // Change to memoryStorage
 const upload = multer({ storage: storage });
 
 // --- Middleware ---
@@ -151,7 +146,7 @@ app.get('/api/posts/:id', async (req, res) => {
     }
 });
 
-// Create a new blog post with image upload
+// Create a new blog post with image upload or URL
 app.post('/api/posts', requireLogin, upload.single('featuredImage'), async (req, res) => {
     console.log('POST /api/posts - Create new post request received.');
     console.log('Request Body:', req.body);
@@ -159,10 +154,20 @@ app.post('/api/posts', requireLogin, upload.single('featuredImage'), async (req,
         console.log('File received:', req.file.filename);
     }
 
+    let imageUrlToSave = req.body.imageUrl; // Prioritize URL from form field
+    if (!imageUrlToSave && req.file) {
+        // If no URL provided, but a file was uploaded, use a placeholder or handle actual upload
+        // For now, we'll just log that a file was received but not saved persistently
+        console.warn('File uploaded but not saved persistently. Use cloud storage for production.');
+        // In a real app, you'd upload req.file.buffer to Cloudinary/S3 here
+        // For this example, we'll just ignore the file if no URL is provided.
+        // If you want to use the file, you'd need to implement cloud storage here.
+    }
+
     const newPost = new Post({
         title: req.body.title,
         content: req.body.content,
-        imageUrl: req.file ? '/uploads/' + req.file.filename : null,
+        imageUrl: imageUrlToSave, // Use the URL from the form or null
         status: req.body.status || 'draft' // Set status from request body, default to draft
     });
 
@@ -176,7 +181,7 @@ app.post('/api/posts', requireLogin, upload.single('featuredImage'), async (req,
     }
 });
 
-// Update an existing blog post with optional image upload
+// Update an existing blog post with optional image upload or URL
 app.put('/api/posts/:id', requireLogin, upload.single('featuredImage'), async (req, res) => {
     console.log('PUT /api/posts/:id - Update post request received for ID:', req.params.id);
     console.log('Request Body:', req.body);
@@ -192,9 +197,19 @@ app.put('/api/posts/:id', requireLogin, upload.single('featuredImage'), async (r
 
         post.title = req.body.title;
         post.content = req.body.content;
-        if (req.file) {
-            post.imageUrl = '/uploads/' + req.file.filename;
+        
+        // Prioritize URL from form field
+        if (req.body.imageUrl) {
+            post.imageUrl = req.body.imageUrl;
+        } else if (req.file) {
+            // If no URL provided, but a file was uploaded, use a placeholder or handle actual upload
+            console.warn('File uploaded but not saved persistently. Use cloud storage for production.');
+            // In a real app, you'd upload req.file.buffer to Cloudinary/S3 here
+            // For this example, we'll just ignore the file if no URL is provided.
+            // If you want to use the file, you'd need to implement cloud storage here.
         }
+        // If neither URL nor file is provided, imageUrl remains unchanged
+
         if (req.body.status) { // Update status if provided
             post.status = req.body.status;
         }
