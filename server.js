@@ -153,6 +153,12 @@ app.get('/api/posts/:id', async (req, res) => {
 
 // Create a new blog post with image upload
 app.post('/api/posts', requireLogin, upload.single('featuredImage'), async (req, res) => {
+    console.log('POST /api/posts - Create new post request received.');
+    console.log('Request Body:', req.body);
+    if (req.file) {
+        console.log('File received:', req.file.filename);
+    }
+
     const newPost = new Post({
         title: req.body.title,
         content: req.body.content,
@@ -162,18 +168,20 @@ app.post('/api/posts', requireLogin, upload.single('featuredImage'), async (req,
 
     try {
         const savedPost = await newPost.save();
+        console.log('New post created successfully:', savedPost.title);
         res.status(201).json(savedPost);
     } catch (err) {
+        console.error('Error creating new post:', err);
         res.status(400).json({ message: err.message });
     }
 });
 
 // Update an existing blog post with optional image upload
 app.put('/api/posts/:id', requireLogin, upload.single('featuredImage'), async (req, res) => {
-    console.log('Attempting to update post with ID:', req.params.id);
+    console.log('PUT /api/posts/:id - Update post request received for ID:', req.params.id);
     console.log('Request Body:', req.body);
     if (req.file) {
-        console.log('File uploaded:', req.file.filename);
+        console.log('File received:', req.file.filename);
     }
     try {
         const post = await Post.findById(req.params.id);

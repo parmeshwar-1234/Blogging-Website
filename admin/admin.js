@@ -185,6 +185,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('featuredImage', featuredImage);
             }
 
+            // --- DEBUGGING FormData START ---
+            for (let pair of formData.entries()) {
+                console.log(pair[0]+ ', ' + pair[1]); 
+            }
+            // --- DEBUGGING FormData END ---
+
             const method = postId ? 'PUT' : 'POST';
             const url = postId ? `/api/posts/${postId}` : '/api/posts';
 
