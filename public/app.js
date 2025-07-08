@@ -44,7 +44,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const postId = e.target.dataset.id;
             try {
                 const response = await fetch(`/api/posts/${postId}`);
-                const post = await response.json();
+                
+                // --- DEBUGGING LOGS START ---
+                console.log('Response Status for single post:', response.status);
+                const responseText = await response.text();
+                console.log('Response Text for single post:', responseText);
+                // --- DEBUGGING LOGS END ---
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${responseText}`);
+                }
+
+                const post = JSON.parse(responseText); // Parse after logging text
 
                 modalTitle.textContent = post.title;
                 if (post.imageUrl) {
