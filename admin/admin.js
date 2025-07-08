@@ -538,10 +538,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.querySelector('.list-group').insertBefore(createUserLink, logoutButton.parentNode); // Insert before logout
                     createUserLink.addEventListener('click', (e) => { e.preventDefault(); loadContent('create-user'); });
                 }
+            } else {
+                // If fetching role fails (e.g., not logged in), redirect to login
+                console.warn('Failed to fetch user role. Redirecting to login.');
+                window.location.href = '/admin/login.html';
             }
         } catch (error) {
-            console.error('Error fetching user role:', error);
-            // If role cannot be fetched, assume author or redirect to login
+            console.error('Error during dashboard initialization:', error);
+            // Catch network errors during role fetch and redirect to login
             window.location.href = '/admin/login.html';
         }
         loadContent('dashboard');
