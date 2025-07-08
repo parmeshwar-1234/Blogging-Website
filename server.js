@@ -136,14 +136,17 @@ app.get('/api/posts', async (req, res) => {
 
 // Get a single blog post by ID (for editing)
 app.get('/api/posts/:id', async (req, res) => {
-    console.log('Fetching single post with ID:', req.params.id);
+    console.log('Attempting to fetch single post with ID:', req.params.id);
     try {
         const post = await Post.findById(req.params.id);
         if (!post) {
+            console.log('Post not found for ID:', req.params.id);
             return res.status(404).json({ message: 'Post not found' });
         }
+        console.log('Post found:', post.title);
         res.json(post);
     } catch (err) {
+        console.error('Error fetching post by ID:', req.params.id, err);
         res.status(500).json({ message: err.message });
     }
 });
