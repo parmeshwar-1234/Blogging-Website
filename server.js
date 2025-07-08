@@ -170,9 +170,15 @@ app.post('/api/posts', requireLogin, upload.single('featuredImage'), async (req,
 
 // Update an existing blog post with optional image upload
 app.put('/api/posts/:id', requireLogin, upload.single('featuredImage'), async (req, res) => {
+    console.log('Attempting to update post with ID:', req.params.id);
+    console.log('Request Body:', req.body);
+    if (req.file) {
+        console.log('File uploaded:', req.file.filename);
+    }
     try {
         const post = await Post.findById(req.params.id);
         if (!post) {
+            console.log('Post not found for update:', req.params.id);
             return res.status(404).json({ message: 'Post not found' });
         }
 
@@ -186,8 +192,10 @@ app.put('/api/posts/:id', requireLogin, upload.single('featuredImage'), async (r
         }
 
         const updatedPost = await post.save();
+        console.log('Post updated successfully:', updatedPost.title);
         res.status(200).json(updatedPost);
     } catch (err) {
+        console.error('Error updating post:', req.params.id, err);
         res.status(400).json({ message: err.message });
     }
 });
