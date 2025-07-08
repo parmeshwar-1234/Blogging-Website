@@ -135,7 +135,7 @@ app.get('/api/posts', async (req, res) => {
 });
 
 // Get a single blog post by ID (for editing)
-app.get('/api/posts/:id', requireLogin, async (req, res) => {
+app.get('/api/posts/:id', async (req, res) => {
     try {
         const post = await Post.findById(req.params.id);
         if (!post) {
