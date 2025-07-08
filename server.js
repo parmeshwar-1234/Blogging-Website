@@ -23,20 +23,25 @@ const PostSchema = new mongoose.Schema({
     content: String,
     imageUrl: String,
     date: { type: Date, default: Date.now },
-    status: { type: String, enum: ['draft', 'published'], default: 'draft' } // Added status field
+    status: { type: String, enum: ['draft', 'pending_review', 'published', 'rejected'], default: 'draft' }, // Added new statuses
+    author: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Link to author
+    comments: [{ // For reviewer feedback
+        text: String,
+        createdAt: { type: Date, default: Date.now }
+    }]
 });
 const Post = mongoose.model('Post', PostSchema);
 
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
-    password: { type: String, required: true }
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    role: { type: String, enum: ['admin', 'reviewer', 'author'], default: 'author' } // Renamed publisher to reviewer
 });
 const User = mongoose.model('User', UserSchema);
 
 // --- Multer Configuration for File Uploads ---
-// Use memoryStorage when you want to process the file in memory (e.g., send to cloud storage)
-// or if you're not saving it locally.
-const storage = multer.memoryStorage(); // Change to memoryStorage
+const storage = multer.memoryStorage(); // Use memoryStorage
 const upload = multer({ storage: storage });
 
 // --- Middleware ---
@@ -88,6 +93,38 @@ app.get('/', (req, res) => {
     res.send('Blog Backend is Running!');
 });
 
+// User Registration (Publicly accessible for authors)
+app.post('/api/register', async (req, res) => {
+    const { username, email, password } = req.body;
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = new User({ username, email, password: hashedPassword, role: 'author' }); // Default role is author
+        await newUser.save();
+        res.status(201).json({ message: 'User registered successfully.' });
+    } catch (err) {
+        console.error('Error during registration:', err);
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Admin creates new user (Admin only)
+app.post('/api/users', requireLogin, requireRole('admin'), async (req, res) => {
+    const { username, email, password, role } = req.body;
+    try {
+        // Validate role input
+        if (!['admin', 'reviewer', 'author'].includes(role)) {
+            return res.status(400).json({ message: 'Invalid role specified.' });
+        }
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = new User({ username, email, password: hashedPassword, role });
+        await newUser.save();
+        res.status(201).json({ message: `User ${username} created successfully with role ${role}.` });
+    } catch (err) {
+        console.error('Error creating user by admin:', err);
+        res.status(400).json({ message: err.message });
+    }
+});
+
 // Login Route
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
@@ -95,6 +132,8 @@ app.post('/api/login', async (req, res) => {
 
     if (user && bcrypt.compareSync(password, user.password)) {
         req.session.userId = user._id;
+        req.session.role = user.role; // Store user role in session
+        console.log(`User ${user.username} logged in. Role stored in session: ${req.session.role}`); // DEBUG
         res.status(200).json({ message: 'Login successful' });
     } else {
         res.status(401).json({ message: 'Invalid username or password' });
@@ -113,18 +152,41 @@ app.post('/api/logout', (req, res) => {
     });
 });
 
+// Get current user role (for frontend initialization)
+app.get('/api/user/role', requireLogin, async (req, res) => {
+    try {
+        const user = await User.findById(req.session.userId);
+        if (!user) {
+            console.log('User not found for session ID:', req.session.userId);
+            return res.status(404).json({ message: 'User not found' });
+        }
+        console.log('Returning user role:', user.role, 'for user:', user.username); // DEBUG
+        res.json({ role: user.role });
+    } catch (err) {
+        console.error('Error fetching user role:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // Get all blog posts (public and admin view)
 app.get('/api/posts', async (req, res) => {
     try {
         let query = {};
-        // If user is logged in (admin), show all posts (drafts + published)
-        // Otherwise, only show published posts for public view
-        if (!(req.session && req.session.userId)) {
+        // If user is logged in (admin/reviewer), show all posts
+        // If user is author, show only their posts
+        // If public, show only published posts
+        if (req.session && req.session.userId) {
+            const user = await User.findById(req.session.userId);
+            if (user.role === 'author') {
+                query = { author: req.session.userId };
+            }
+        } else {
             query = { status: 'published' };
         }
-        const posts = await Post.find(query).sort({ date: -1 });
+        const posts = await Post.find(query).populate('author', 'username').sort({ date: -1 }); // Populate author username
         res.json(posts);
     } catch (err) {
+        console.error('Error fetching all posts:', err);
         res.status(500).json({ message: err.message });
     }
 });
@@ -133,7 +195,7 @@ app.get('/api/posts', async (req, res) => {
 app.get('/api/posts/:id', async (req, res) => {
     console.log('Attempting to fetch single post with ID:', req.params.id);
     try {
-        const post = await Post.findById(req.params.id);
+        const post = await Post.findById(req.params.id).populate('author', 'username');
         if (!post) {
             console.log('Post not found for ID:', req.params.id);
             return res.status(404).json({ message: 'Post not found' });
@@ -151,24 +213,19 @@ app.post('/api/posts', requireLogin, upload.single('featuredImage'), async (req,
     console.log('POST /api/posts - Create new post request received.');
     console.log('Request Body:', req.body);
     if (req.file) {
-        console.log('File received:', req.file.filename);
+        console.log('File received (will not be persistently saved):', req.file.originalname);
     }
 
     let imageUrlToSave = req.body.imageUrl; // Prioritize URL from form field
-    if (!imageUrlToSave && req.file) {
-        // If no URL provided, but a file was uploaded, use a placeholder or handle actual upload
-        // For now, we'll just log that a file was received but not saved persistently
-        console.warn('File uploaded but not saved persistently. Use cloud storage for production.');
-        // In a real app, you'd upload req.file.buffer to Cloudinary/S3 here
-        // For this example, we'll just ignore the file if no URL is provided.
-        // If you want to use the file, you'd need to implement cloud storage here.
-    }
+    // If no URL provided, and a file was uploaded, we acknowledge it but don't save it persistently
+    // In a real app, req.file.buffer would be sent to cloud storage here.
 
     const newPost = new Post({
         title: req.body.title,
         content: req.body.content,
         imageUrl: imageUrlToSave, // Use the URL from the form or null
-        status: req.body.status || 'draft' // Set status from request body, default to draft
+        status: req.body.status || 'draft', // Set status from request body, default to draft
+        author: req.session.userId // Assign current user as author
     });
 
     try {
@@ -186,13 +243,18 @@ app.put('/api/posts/:id', requireLogin, upload.single('featuredImage'), async (r
     console.log('PUT /api/posts/:id - Update post request received for ID:', req.params.id);
     console.log('Request Body:', req.body);
     if (req.file) {
-        console.log('File received:', req.file.filename);
+        console.log('File received (will not be persistently saved):', req.file.originalname);
     }
     try {
         const post = await Post.findById(req.params.id);
         if (!post) {
             console.log('Post not found for update:', req.params.id);
             return res.status(404).json({ message: 'Post not found' });
+        }
+
+        // Permission check: Admin can edit any post. Author can only edit their own draft posts.
+        if (req.session.role !== 'admin' && (post.author.toString() !== req.session.userId || post.status !== 'draft')) {
+            return res.status(403).json({ message: 'Forbidden: You can only edit your own draft posts.' });
         }
 
         post.title = req.body.title;
@@ -202,19 +264,25 @@ app.put('/api/posts/:id', requireLogin, upload.single('featuredImage'), async (r
         if (req.body.imageUrl) {
             post.imageUrl = req.body.imageUrl;
         } else if (req.file) {
-            // If no URL provided, but a file was uploaded, use a placeholder or handle actual upload
+            // If no URL provided, but a file was uploaded, we acknowledge it but don't save it persistently
             console.warn('File uploaded but not saved persistently. Use cloud storage for production.');
-            // In a real app, you'd upload req.file.buffer to Cloudinary/S3 here
-            // For this example, we'll just ignore the file if no URL is provided.
-            // If you want to use the file, you'd need to implement cloud storage here.
         }
         // If neither URL nor file is provided, imageUrl remains unchanged
 
         if (req.body.status) { // Update status if provided
-            post.status = req.body.status;
+            // Reviewers/Admins can change status freely
+            if (req.session.role === 'reviewer' || req.session.role === 'admin') {
+                post.status = req.body.status;
+            } else if (req.session.role === 'author' && req.body.status === 'pending_review') {
+                // Authors can only change status to pending_review
+                post.status = req.body.status;
+            } else if (req.session.role === 'author' && req.body.status !== post.status) {
+                // Authors cannot change status to anything else if it's not pending_review
+                return res.status(403).json({ message: 'Forbidden: Authors can only submit for review.' });
+            }
         }
 
-        const updatedPost = await post.save();
+        const updatedPost = await post.save(); // Use save() for full validation and hooks
         console.log('Post updated successfully:', updatedPost.title);
         res.status(200).json(updatedPost);
     } catch (err) {
@@ -226,9 +294,97 @@ app.put('/api/posts/:id', requireLogin, upload.single('featuredImage'), async (r
 // Delete a blog post
 app.delete('/api/posts/:id', requireLogin, async (req, res) => {
     try {
+        const post = await Post.findById(req.params.id);
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+        // Permission check: Admin can delete any post. Author can only delete their own draft posts.
+        if (req.session.role !== 'admin' && (post.author.toString() !== req.session.userId || post.status !== 'draft')) {
+            return res.status(403).json({ message: 'Forbidden: You can only delete your own draft posts.' });
+        }
+
         await Post.findByIdAndDelete(req.params.id);
+        console.log('Post deleted successfully:', req.params.id);
         res.status(200).json({ message: 'Post deleted successfully' });
     } catch (err) {
+        console.error('Error deleting post:', req.params.id, err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Update Post Status (Reviewer/Admin only)
+app.put('/api/posts/:id/status', requireLogin, requireRole('reviewer'), async (req, res) => {
+    const { status, comment } = req.body;
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        post.status = status;
+        if (comment) {
+            post.comments.push({ text: comment });
+        }
+        await post.save();
+        res.status(200).json({ message: `Post status updated to ${status}` });
+    } catch (err) {
+        console.error('Error updating post status:', err);
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Add Comment to Post (Reviewer/Admin only)
+app.post('/api/posts/:id/comment', requireLogin, requireRole('reviewer'), async (req, res) => {
+    const { comment } = req.body;
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+        post.comments.push({ text: comment });
+        await post.save();
+        res.status(200).json({ message: 'Comment added successfully' });
+    } catch (err) {
+        console.error('Error adding comment:', err);
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Get all users (Admin only)
+app.get('/api/users', requireLogin, requireRole('admin'), async (req, res) => {
+    try {
+        const users = await User.find({}, '-password'); // Exclude password
+        res.json(users);
+    } catch (err) {
+        console.error('Error fetching users:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Update user role (Admin only)
+app.put('/api/users/:id/role', requireLogin, requireRole('admin'), async (req, res) => {
+    const { role } = req.body;
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        user.role = role;
+        await user.save();
+        res.status(200).json({ message: `User role updated to ${role}` });
+    } catch (err) {
+        console.error('Error updating user role:', err);
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Delete user (Admin only)
+app.delete('/api/users/:id', requireLogin, requireRole('admin'), async (req, res) => {
+    try {
+        await User.findByIdAndDelete(req.params.id);
+        res.status(200).json({ message: 'User deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting user:', err);
         res.status(500).json({ message: err.message });
     }
 });
@@ -238,8 +394,12 @@ app.get('/api/stats', requireLogin, async (req, res) => {
     try {
         const postCount = await Post.countDocuments();
         const publishedPostCount = await Post.countDocuments({ status: 'published' });
-        res.json({ postCount, publishedPostCount });
+        const draftPostCount = await Post.countDocuments({ status: 'draft' });
+        const pendingReviewCount = await Post.countDocuments({ status: 'pending_review' });
+        const rejectedCount = await Post.countDocuments({ status: 'rejected' });
+        res.json({ postCount, publishedPostCount, draftPostCount, pendingReviewCount, rejectedCount });
     } catch (err) {
+        console.error('Error fetching dashboard stats:', err);
         res.status(500).json({ message: err.message });
     }
 });
