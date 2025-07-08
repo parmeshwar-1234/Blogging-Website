@@ -82,6 +82,15 @@ const requireLogin = (req, res, next) => {
     }
 };
 
+// Middleware to check user role
+const requireRole = (role) => (req, res, next) => {
+    if (req.session && req.session.role && (req.session.role === role || req.session.role === 'admin')) {
+        next();
+    } else {
+        res.status(403).json({ message: 'Forbidden: Insufficient role permissions.' });
+    }
+};
+
 // Serve the admin dashboard (create post page)
 app.use('/admin', requireLogin, express.static(path.join(__dirname, 'admin')));
 
