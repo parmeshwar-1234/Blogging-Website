@@ -75,9 +75,14 @@ app.get('/admin/login.css', (req, res) => {
 
 // Middleware to protect admin routes
 const requireLogin = (req, res, next) => {
+    console.log('requireLogin middleware triggered.'); // DEBUG
+    console.log('req.session:', req.session); // DEBUG
+    console.log('req.session.userId:', req.session ? req.session.userId : 'N/A'); // DEBUG
+
     if (req.session && req.session.userId) {
         return next();
     } else {
+        console.log('User not logged in. Redirecting to login.'); // DEBUG
         return res.redirect('/admin/login.html');
     }
 };
@@ -143,7 +148,12 @@ app.post('/api/login', async (req, res) => {
         req.session.userId = user._id;
         req.session.role = user.role; // Store user role in session
         console.log(`User ${user.username} logged in. Role stored in session: ${req.session.role}`); // DEBUG
-        res.status(200).json({ message: 'Login successful' });
+        req.session.save(err => { // Explicitly save session
+            if (err) {
+                console.error('Error saving session after login:', err);
+            }
+            res.status(200).json({ message: 'Login successful' });
+        });
     } else {
         res.status(401).json({ message: 'Invalid username or password' });
     }
