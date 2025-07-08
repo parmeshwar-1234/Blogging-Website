@@ -63,17 +63,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                 </div>
-                                <div class="col-md-6 col-lg-4 mb-4">
-                    <div class="card bg-secondary text-white h-100 shadow-sm">
-                        <div class="card-body d-flex align-items-center justify-content-between">
-                            <div>
-                                <h5 class="card-title text-uppercase">Drafts</h5>
-                                <h1 class="display-4">${stats.draftPostCount}</h1>
-                            </div>
-                            <i class="bi bi-check-circle stat-card-icon"></i>
-                        </div>
-                    </div>
-                </div>
                 <!-- Add more stat cards here if needed -->
             </div>
         `;
@@ -163,6 +152,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- Event Listeners ---
+
     document.getElementById('nav-dashboard').addEventListener('click', (e) => { e.preventDefault(); loadContent('dashboard'); });
     document.getElementById('nav-manage-posts').addEventListener('click', (e) => { e.preventDefault(); loadContent('manage-posts'); });
     document.getElementById('nav-create-post').addEventListener('click', (e) => { e.preventDefault(); loadContent('create-post'); });
@@ -225,22 +216,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else if (e.target.classList.contains('edit-post')) {
             const postId = e.target.dataset.id;
-            const response = await fetch(`/api/posts/${postId}`);
-            const post = await response.json();
-            loadCreatePost(post);
-        } else if (e.target.classList.contains('publish-post') || e.target.classList.contains('unpublish-post')) {
-            const postId = e.target.dataset.id;
-            const newStatus = e.target.classList.contains('publish-post') ? 'published' : 'draft';
-            const response = await fetch(`/api/posts/${postId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus })
-            });
-            if (response.ok) {
-                alert(`Post ${newStatus} successfully!`);
-                loadContent('manage-posts');
-            } else {
-                alert(`Failed to ${newStatus} post`);
+            console.log('Attempting to fetch post for editing with ID:', postId);
+            try {
+                const response = await fetch(`/api/posts/${postId}`);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Error response when fetching post for edit:', response.status, errorText);
+                    throw new Error(`Failed to fetch post for edit: ${response.status}`);
+                }
+                const post = await response.json();
+                console.log('Fetched post data for editing:', post);
+                loadCreatePost(post);
+            } catch (error) {
+                console.error('Error in edit-post click handler:', error);
+                alert('Could not load post details for editing.');
             }
         }
     });
