@@ -53,7 +53,13 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'a_secret_key_for_sessions', // Use env variable for secret
     resave: false,
     saveUninitialized: false,
-    store: MongoStore.create({ mongoUrl: MONGO_URI })
+    store: MongoStore.create({ mongoUrl: MONGO_URI }),
+    cookie: { 
+        secure: process.env.NODE_ENV === 'production', // Use secure cookies in production (HTTPS)
+        httpOnly: true, // Prevents client-side JS from reading the cookie
+        sameSite: 'Lax', // Protects against CSRF attacks
+        maxAge: 1000 * 60 * 60 * 24 // 1 day
+    }
 }));
 
 // Middleware to serve static files (public facing)
