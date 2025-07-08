@@ -9,7 +9,7 @@ const bcrypt = require('bcrypt');
 const multer = require('multer');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000; // Use process.env.PORT or default to 3000
 const MONGO_URI = process.env.MONGO_URI;
 
 // --- Database Connection ---
@@ -50,7 +50,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Session Configuration
 app.use(session({
-    secret: 'a_secret_key_for_sessions',
+    secret: process.env.SESSION_SECRET || 'a_secret_key_for_sessions', // Use env variable for secret
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({ mongoUrl: MONGO_URI })
@@ -198,9 +198,7 @@ app.get('/api/stats', requireLogin, async (req, res) => {
     try {
         const postCount = await Post.countDocuments();
         const publishedPostCount = await Post.countDocuments({ status: 'published' });
-        const draftPostCount = await Post.countDocuments({ status: 'draft' });
-
-        res.json({ postCount, publishedPostCount, draftPostCount});
+        res.json({ postCount, publishedPostCount });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
